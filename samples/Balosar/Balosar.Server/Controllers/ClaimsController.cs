@@ -13,8 +13,7 @@ using OpenIddict.Validation.AspNetCore;
 
 namespace Balosar.Server.Controllers;
 
-// [Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
-// using the above Authorize will break the server side CLAIMS.
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
 [ApiController, Route("/api/[controller]")]
 public class ClaimsController : Controller
 {
@@ -28,7 +27,6 @@ public class ClaimsController : Controller
     }
 
     [HttpPost("add-sample")]
-    [Authorize]
     public async Task<IActionResult> AddSampleClaims()
     {
         var userId = HttpContext.User.FindFirst(OpenIddictConstants.Claims.Subject)?.Value;
@@ -60,7 +58,6 @@ public class ClaimsController : Controller
 
 
     [HttpGet("has-claim")]
-    [Authorize]
     [ResponseCache(NoStore = true)]
     public IActionResult HasClaim([FromQuery]string type, [FromQuery]string value)
     {

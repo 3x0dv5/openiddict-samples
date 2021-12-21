@@ -1,55 +1,89 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Security.Claims;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 
-namespace Balosar.Client.Components
+namespace Balosar.Client.Components;
+
+public partial class HasClaim
 {
-    public partial class HasClaim
+    [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; }
+    [Inject] private HttpClient Http { get; set; }
+
+    [Parameter] public ClaimSide ClaimSide { get; set; }
+    [Parameter] public string ClaimType { get; set; }
+    [Parameter] public string ClaimValue { get; set; }
+    [Parameter] public bool Expected { get; set; }
+    [Parameter] public bool UseWorkaround { get; set; }
+
+    private bool UserAuthenticated { get; set; }
+    private bool UserHasClaim { get; set; }
+    private string ResultBackgrounColor => UserHasClaim ? "#B4E4A4" : "#ECBFBF";
+    private MarkupString HasClaimMessage
     {
-        [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; }
-        [Inject] private HttpClient Http { get; set; }
-
-        [Parameter] public ClaimSide ClaimSide { get; set; }
-        [Parameter] public string ClaimType { get; set; }
-        [Parameter] public string ClaimValue { get; set; }
-        [Parameter] public bool Expected { get; set; }
-
-        private bool UserAuthenticated { get; set; }
-        private bool UserHasClaim { get; set; }
-        private string ResultBackgrounColor => UserHasClaim ? "#B4E4A4" : "#ECBFBF";
-        private MarkupString HasClaimMessage
+        get
         {
-            get
+            if (UserHasClaim)
             {
-                if (UserHasClaim)
-                {
-                    return new MarkupString("<span style='color:green;font-weight:bold'> YES </span>");
-                }
-
-                return new MarkupString("<span style='color:red;font-weight:bold'> NO </span>");
+                return new MarkupString("<span style='color:green;font-weight:bold'> YES </span>");
             }
+
+            return new MarkupString("<span style='color:red;font-weight:bold'> NO </span>");
         }
+    }
 
-        protected override async Task OnParametersSetAsync()
+    protected override async Task OnParametersSetAsync()
+    {
+        var user = (await AuthStateProvider.GetAuthenticationStateAsync()).User;
+        if (user.Identity != null)
+            UserAuthenticated = user.Identity.IsAuthenticated;
+
+        if (UserAuthenticated)
         {
-            var user = (await AuthStateProvider.GetAuthenticationStateAsync()).User;
-            if (user.Identity != null)
-                UserAuthenticated = user.Identity.IsAuthenticated;
-
-            if (UserAuthenticated)
+            if (ClaimSide == ClaimSide.Client)
             {
-                if (ClaimSide == ClaimSide.Client)
+                if (UseWorkaround)
                 {
-                    UserHasClaim = user.HasClaim(ClaimType, ClaimValue);
+                    UserHasClaim = user.HasClaimValue(ClaimType, ClaimValue);
                 }
                 else
                 {
-                    UserHasClaim = await Http.GetFromJsonAsync<bool>($"/api/claims/has-claim?type={ClaimType}&value={ClaimValue}&stamp={DateTime.Now.Ticks}");
+                    UserHasClaim = user.HasClaim(ClaimType, ClaimValue);
                 }
+            }
+            else
+            {
+                UserHasClaim = await Http.GetFromJsonAsync<bool>($"/api/claims/has-claim?type={ClaimType}&value={ClaimValue}&stamp={DateTime.Now.Ticks}");
             }
         }
     }
+}
+
+static class ClaimsPrincipalExtensions
+{
+    public static bool HasClaimValue(this ClaimsPrincipal user,string claimType, string claimValue)
+    {
+        var c = user.Claims.SingleOrDefault(m => m.Type == claimType);
+        if (c == null)
+            return false;
+
+        try
+        {
+            var cValues = JsonSerializer.Deserialize<List<string>>(c.Value);
+            return cValues != null && cValues.Contains(claimValue);
+        }
+        catch (Exception)
+        {
+            // ignored
+        }
+
+        return c.Value == claimValue;
+    }
+
 }
